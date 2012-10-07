@@ -8,7 +8,7 @@ class Safecracker_lockdown_ext {
 	public $docs_url		= '';
 	public $name			= 'Safecracker Lockdown';
 	public $settings_exist	= 'n';
-	public $version			= '1.1';
+	public $version			= '1.1.1';
 	
 	private $EE;
 
@@ -109,17 +109,13 @@ class Safecracker_lockdown_ext {
 
 			$_SESSION['SC_lockdown'][$lockdown_id] = array();
 	
-			// just to be safe
-			unset($_SESSION['SC_lockdown']['active_id']);
 		}
 		else
 		{
+			// lockdown_id is stored in session cache on submit_entry_start
 			// errors 
-			// lockdown_id was stored on submit entry start
 
-			$lockdown_id = $_SESSION['SC_lockdown']['active_id'];
-
-			unset($_SESSION['SC_lockdown']['active_id']);
+			$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
 
 // var_dump('ERRORS', $lockdown_id, $_SESSION['SC_lockdown']);
 
@@ -200,12 +196,12 @@ class Safecracker_lockdown_ext {
 			show_error("Lockdown session invalid", 500);
 		}
 
-		// Keep lockdown id for submit entry end.
-		// The class is instantiated for every hook, so store it elsewhere than in $this *sigh*
-		// Storing it in session should be save because the session is locked during the request.
-		// Active_id is reset in tag_data_end or when the form has no errors.
-		// TODO: store in EE cache instead?
-		$_SESSION['SC_lockdown']['active_id'] = $lockdown_id;
+		// Keep lockdown id for submit entry end. The class is 
+		// instantiated for every individual hook! 
+		// so we need to store it in session rather than in $this *sigh*
+
+		$this->EE->session->set_cache('SC_lockdown', 'active_id', $lockdown_id);
+
 
 		// handy, allow extra rules on default fields, title etc., like min_length[4]
 		if ( ! empty($_SESSION['SC_lockdown'][$lockdown_id]['rules']))
@@ -220,9 +216,6 @@ class Safecracker_lockdown_ext {
 			}
 		}
 
-		//var_dump($_POST);
-		//exit;
-
 	}
 
 
@@ -234,23 +227,17 @@ class Safecracker_lockdown_ext {
 	public function hook_safecracker_submit_entry_end( &$SC )
 	{
 		// pop lockdown id, hello there
-		$lockdown_id = $_SESSION['SC_lockdown']['active_id'];
+		$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
 
 		// reset our stuffs
 		if (empty($SC->field_errors) && empty($SC->errors))
 		{
-			var_dump('reset sc_lockdown');
-
+			// entry saved, remove session
 			if (isset($_SESSION['SC_lockdown'][$lockdown_id]))
 			{
 				unset($_SESSION['SC_lockdown'][$lockdown_id]);
 			}
-
-			unset($_SESSION['SC_lockdown']['active_id']);
-
 		}
-
-		// else, we have errors, so we keep active-id a little while
 
 	}
 
