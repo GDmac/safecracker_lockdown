@@ -3,7 +3,7 @@
 
 class Safecracker_lockdown_lib {
 
-	private $timeout = 10;
+	private $timeout = 900;
 
 	public function __construct()
 	{
