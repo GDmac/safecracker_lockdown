@@ -119,7 +119,7 @@ class Safecracker_lockdown_ext {
 			$this->EE->safecracker_lockdown_lib->reset_lockdown_session($lockdown_id);
 		}
 
-var_dump($lockdown_id, $_SESSION['SC_lockdown']);
+//var_dump($lockdown_id, $_SESSION['SC_lockdown']);
 
 
 		// Add lockdown ID to the form
