@@ -108,7 +108,6 @@ class Safecracker_lockdown_ext {
 
 			$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
 
-// var_dump('ERRORS', $lockdown_id, $_SESSION['SC_lockdown']);
 
 			// exit if there is no existing lockdown session
 			if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
@@ -119,6 +118,8 @@ class Safecracker_lockdown_ext {
 			// we're keeping the lockdown id, but clear out data
 			$this->EE->safecracker_lockdown_lib->reset_lockdown_session($lockdown_id);
 		}
+
+var_dump($lockdown_id, $_SESSION['SC_lockdown']);
 
 
 		// Add lockdown ID to the form
