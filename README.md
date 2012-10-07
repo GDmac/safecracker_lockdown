@@ -34,7 +34,7 @@ Additionally you can set rules to some default fields, like title.
 2012-10-07 
 Version 1.2
 - Move lockdown session to library
-- Garbage colelction of session
+- Garbage collection of session
 
 Version 1.1.1
 - use EE session cache for inter-hook data
