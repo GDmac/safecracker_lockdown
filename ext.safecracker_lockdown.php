@@ -8,11 +8,9 @@ class Safecracker_lockdown_ext {
 	public $docs_url		= '';
 	public $name			= 'Safecracker Lockdown';
 	public $settings_exist	= 'n';
-	public $version			= '1.0';
+	public $version			= '1.1';
 	
 	private $EE;
-	
-	// ----------------------------------------------------------------------
 
 	public function __construct($settings = '')
 	{
@@ -20,46 +18,246 @@ class Safecracker_lockdown_ext {
 		$this->settings = $settings;
 	}
 
-	// ----------------------------------------------------------------------
-	
-	public function safecracker_submit_entry_start( & $SC )
+
+	/* ----------------------------------------------------------------------
+	 * Inject any rules before safecracker even runs
+	 * They have to be encrypted, safecrackster will decrypt them *sigh*
+	 *
+	 */
+
+	public function hook_sessions_end( &$sess )
 	{
-		// start session
+		if (REQ !== 'ACTION') return;
+
+		// bye-bye user submitted rules
+		if (isset($_POST['rules'])) show_error('Please use safecracker_lockdown to set any rules.', 500);
+
+		// do we have lockdown?
+		if ($this->EE->input->post('lockdown_id') != false)
+		{
+			// PHP session-locks make the app linear, only start when needed
+			if (!isset($_SESSION))
+			{
+				session_start();
+			}
+
+			$lockdown_id = $this->EE->input->post('lockdown_id');
+
+			if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
+			{
+				show_error('Safecracker lockdown id not found',500);
+			}
+
+			$this->restore_lockdown_rules($lockdown_id);
+	
+			// $this->restore_hidden_fields();
+		}
+
+	}
+
+	// ----------------------------------------------------------------------
+	public function restore_lockdown_rules($lockdown_id)
+	{
+		// any rules to inject?
+		if ( empty($_SESSION['SC_lockdown'][$lockdown_id]['rules']) ) return;
+
+		foreach ($_SESSION['SC_lockdown'][$lockdown_id]['rules'] as $field_name => $field_rules)
+		{
+			$_POST['rules'][$field_name] = $field_rules;
+		}
+
+	}
+
+	// ----------------------------------------------------------------------
+	public function restore_hidden_fields($lockdown_id)
+	{
+		// any values to restore
+		if ( empty($_SESSION['SC_lockdown'][$lockdown_id]['hidden_fields']) ) return;
+
+		foreach ($_SESSION['SC_lockdown'][$lockdown_id]['hidden_fields'] as $field_name => $value)
+		{
+			$_POST[$field_name] = $value;
+		}
+	}
+
+
+
+	/* ----------------------------------------------------------------------
+	 * Create or verify the lockdown session. Fetch any rules and field values
+	 * from safecracker tagdata, and stuff them into the lockdown session.
+	 * And, insert the lockdown_id in the form
+	 *
+	 */
+
+	public function hook_safecracker_entry_form_tagdata_end( $tagdata, &$SC )
+	{
+		// start PHP session
 		if (!isset($_SESSION))
 		{
 			session_start();
 		}
 
-		// Is the session ready?
-		if ( ! isset($_SESSION['SC_lockdown']))
+		// create a fresh lockdown session when there are no errors
+		// if there are errors, then a lockdown session should already exist
+
+		if (empty($SC->field_errors) && empty($SC->errors))
 		{
-			show_error("SC_lockdown is in effect, but lockdown session not set", 500);
+			// this would be a good place to do garbage collection on the sessions
+			//unset($_SESSION['SC_lockdown']);
+
+			$lockdown_id = md5(uniqid('SC', true));
+
+			$_SESSION['SC_lockdown'][$lockdown_id] = array();
+	
+			// just to be safe
+			unset($_SESSION['SC_lockdown']['active_id']);
+		}
+		else
+		{
+			// errors 
+			// lockdown_id was stored on submit entry start
+
+			$lockdown_id = $_SESSION['SC_lockdown']['active_id'];
+
+			unset($_SESSION['SC_lockdown']['active_id']);
+
+// var_dump('ERRORS', $lockdown_id, $_SESSION['SC_lockdown']);
+
+			// exit if there is no existing lockdown session
+			if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
+			{
+				show_error('Form with errors but without a lockdown id',500);
+			}
+
+			// we're keeping the lockdown id, but clear out data
+			$_SESSION['SC_lockdown'][$lockdown_id] = array();
 		}
 
-		// continue
-		$SC_lockdown = & $_SESSION['SC_lockdown'];
+
+		// Add lockdown ID to the form
+		$tagdata = str_replace('</form>', form_hidden('lockdown_id', $lockdown_id). '</form>', $tagdata);
 
 
-		// Does lockdown id match the hidden form element
-		if ($this->EE->input->post('lockdown_id') !== @$SC_lockdown['lockdown_id'])
+		// fetch safecracker_lockdown tag-pair(s)
+		if ( ! preg_match_all('#{safecracker_lockdown}(.*?)\{/safecracker_lockdown}?#ms', $tagdata, $matches) )
 		{
-			// reset session for next form
-			$_SESSION['SC_lockdown'] = array();
+			return $tagdata;
+		}
+		
+		foreach($matches[1] as $i => $lockdowntag)
+		{
+			// remove safecracker_lockdown tag-pair from template tagdata
+			$tagdata = str_replace($matches[0][$i], '', $tagdata);
 
-			show_error("SC_lockdown is in effect, lockdown ID's don't match", 500);
+			// any conditionals? hopefully they are already prepped
+			if (strpos($lockdowntag, '{if')!== false)
+			{
+				$lockdowntag = $this->EE->TMPL->advanced_conditionals($lockdowntag);
+			}
+
+			// fetch rules and store to session
+			if (preg_match_all('#{rules:([\w]+)=(\042|\047)([^\2].*?)\2}#', $lockdowntag, $rule_matches))
+			{
+				foreach ($rule_matches[1] as $j => $field)
+				{
+					$rules = $rule_matches[3][$j];
+
+					$_SESSION['SC_lockdown'][$lockdown_id]['rules'][$field] = $this->EE->safecracker->encrypt_input($rules);
+
+				}
+			}
 		}
 
+		return $tagdata;
+	}
 
-		// continue processing
 
-		// ...
+	/* ----------------------------------------------------------------------
+	 * The form has been submit
+	 *
+	 */
+	
+	public function hook_safecracker_submit_entry_start( &$SC )
+	{
+		// start PHP session
+		if (!isset($_SESSION))
+		{
+			session_start();
+		}
 
-		// after processing reset lockdown session for next form
-		$_SESSION['SC_lockdown'] = array();
+		// verify session
+		$lockdown_id = $this->EE->input->post('lockdown_id', true);
+
+		if ($lockdown_id == false)
+		{
+			show_error("No lockdown_id in the form", 500);
+		}
+		
+//var_dump($lockdown_id, $_SESSION['SC_lockdown']);
+
+		if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
+		{
+			show_error("Lockdown session invalid", 500);
+		}
+
+		// Keep lockdown id for submit entry end.
+		// The class is instantiated for every hook, so store it elsewhere than in $this *sigh*
+		// Storing it in session should be save because the session is locked during the request.
+		// Active_id is reset in tag_data_end or when the form has no errors.
+		// TODO: store in EE cache instead?
+		$_SESSION['SC_lockdown']['active_id'] = $lockdown_id;
+
+		// handy, allow extra rules on default fields, title etc., like min_length[4]
+		if ( ! empty($_SESSION['SC_lockdown'][$lockdown_id]['rules']))
+		{
+			foreach ($_SESSION['SC_lockdown'][$lockdown_id]['rules'] as $field_name => $field_rules)
+			{
+				if (isset($SC->default_fields[$field_name]))
+				{
+					// stick them on the default rules
+					$SC->default_fields[$field_name]['rules'] .= $SC->decrypt_input($field_rules);
+				}
+			}
+		}
+
+		//var_dump($_POST);
+		//exit;
 
 	}
 
-	// ----------------------------------------------------------------------
+
+	/* ----------------------------------------------------------------------
+	 * Reset lockdown session on success
+	 *
+	 */
+	
+	public function hook_safecracker_submit_entry_end( &$SC )
+	{
+		// pop lockdown id, hello there
+		$lockdown_id = $_SESSION['SC_lockdown']['active_id'];
+
+		// reset our stuffs
+		if (empty($SC->field_errors) && empty($SC->errors))
+		{
+			var_dump('reset sc_lockdown');
+
+			if (isset($_SESSION['SC_lockdown'][$lockdown_id]))
+			{
+				unset($_SESSION['SC_lockdown'][$lockdown_id]);
+			}
+
+			unset($_SESSION['SC_lockdown']['active_id']);
+
+		}
+
+		// else, we have errors, so we keep active-id a little while
+
+	}
+
+
+	/* ----------------------------------------------------------------------
+	 *
+	 */
 	
 	public function activate_extension()
 	{
@@ -67,7 +265,10 @@ class Safecracker_lockdown_ext {
 		$this->settings = array();
 		
 		$hooks = array(
-			'safecracker_submit_entry_start'      => 'safecracker_submit_entry_start',
+			'sessions_end'                       => 'hook_sessions_end',
+			'safecracker_entry_form_tagdata_end' => 'hook_safecracker_entry_form_tagdata_end',
+			'safecracker_submit_entry_start'     => 'hook_safecracker_submit_entry_start',
+			'safecracker_submit_entry_end'       => 'hook_safecracker_submit_entry_end',
 		);
 
 		foreach ($hooks as $hook => $method)
@@ -78,14 +279,17 @@ class Safecracker_lockdown_ext {
 				'hook'		=> $hook,
 				'settings'	=> serialize($this->settings),
 				'version'	=> $this->version,
-				'enabled'	=> 'y'
+				'enabled'	=> 'y',
+				'priority'	=> 20, // thank you SC for claiming the last spot
 			);
 
 			$this->EE->db->insert('extensions', $data);			
 		}
 	}	
 
-	// ----------------------------------------------------------------------
+	/* ----------------------------------------------------------------------
+	 *
+	 */
 	
 	function disable_extension()
 	{
@@ -93,7 +297,9 @@ class Safecracker_lockdown_ext {
 		$this->EE->db->delete('extensions');
 	}
 
-	// ----------------------------------------------------------------------
+	/* ----------------------------------------------------------------------
+	 *
+	 */
 
 	function update_extension($current = '')
 	{
@@ -102,8 +308,7 @@ class Safecracker_lockdown_ext {
 			return FALSE;
 		}
 	}	
-	
-	// ----------------------------------------------------------------------
+
 }
 
 /* End of file ext.safecracker_lockdown.php */
