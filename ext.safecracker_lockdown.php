@@ -8,7 +8,7 @@ class Safecracker_lockdown_ext {
 	public $docs_url		= '';
 	public $name			= 'Safecracker Lockdown';
 	public $settings_exist	= 'n';
-	public $version			= '1.1.1';
+	public $version			= '1.2';
 	
 	private $EE;
 
@@ -35,18 +35,15 @@ class Safecracker_lockdown_ext {
 		// do we have lockdown?
 		if ($this->EE->input->post('lockdown_id') != false)
 		{
-			// PHP session-locks make the app linear, only start when needed
-			if (!isset($_SESSION))
+
+			$this->EE->load->library('safecracker_lockdown_lib');
+
+			if ( ! $this->EE->safecracker_lockdown_lib->verify_lockdown_id())
 			{
-				session_start();
+				show_error('Safecracker lockdown id not found', 500);
 			}
 
 			$lockdown_id = $this->EE->input->post('lockdown_id');
-
-			if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
-			{
-				show_error('Safecracker lockdown id not found',500);
-			}
 
 			$this->restore_lockdown_rules($lockdown_id);
 	
@@ -91,11 +88,7 @@ class Safecracker_lockdown_ext {
 
 	public function hook_safecracker_entry_form_tagdata_end( $tagdata, &$SC )
 	{
-		// start PHP session
-		if (!isset($_SESSION))
-		{
-			session_start();
-		}
+		$this->EE->load->library('safecracker_lockdown_lib');
 
 		// create a fresh lockdown session when there are no errors
 		// if there are errors, then a lockdown session should already exist
@@ -103,17 +96,15 @@ class Safecracker_lockdown_ext {
 		if (empty($SC->field_errors) && empty($SC->errors))
 		{
 			// this would be a good place to do garbage collection on the sessions
-			//unset($_SESSION['SC_lockdown']);
+			$this->EE->safecracker_lockdown_lib->garbage_collection();
 
-			$lockdown_id = md5(uniqid('SC', true));
-
-			$_SESSION['SC_lockdown'][$lockdown_id] = array();
+			$lockdown_id = $this->EE->safecracker_lockdown_lib->create_lockdown_session();
 	
 		}
 		else
 		{
-			// lockdown_id is stored in session cache on submit_entry_start
 			// errors 
+			// lockdown_id is stored in session cache on submit_entry_start
 
 			$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
 
@@ -126,7 +117,7 @@ class Safecracker_lockdown_ext {
 			}
 
 			// we're keeping the lockdown id, but clear out data
-			$_SESSION['SC_lockdown'][$lockdown_id] = array();
+			$this->EE->safecracker_lockdown_lib->reset_lockdown_session($lockdown_id);
 		}
 
 
@@ -182,19 +173,14 @@ class Safecracker_lockdown_ext {
 		}
 
 		// verify session
+
+		if ( ! $this->EE->safecracker_lockdown_lib->verify_lockdown_id())
+		{
+			show_error('Safecracker lockdown id not set or not found', 500);
+		}
+
 		$lockdown_id = $this->EE->input->post('lockdown_id', true);
 
-		if ($lockdown_id == false)
-		{
-			show_error("No lockdown_id in the form", 500);
-		}
-		
-//var_dump($lockdown_id, $_SESSION['SC_lockdown']);
-
-		if ( ! isset($_SESSION['SC_lockdown'][$lockdown_id]))
-		{
-			show_error("Lockdown session invalid", 500);
-		}
 
 		// Keep lockdown id for submit entry end. The class is 
 		// instantiated for every individual hook! 
@@ -226,17 +212,14 @@ class Safecracker_lockdown_ext {
 	
 	public function hook_safecracker_submit_entry_end( &$SC )
 	{
-		// pop lockdown id, hello there
-		$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
-
 		// reset our stuffs
 		if (empty($SC->field_errors) && empty($SC->errors))
 		{
-			// entry saved, remove session
-			if (isset($_SESSION['SC_lockdown'][$lockdown_id]))
-			{
-				unset($_SESSION['SC_lockdown'][$lockdown_id]);
-			}
+			// pop lockdown id, hello there
+			$lockdown_id = $this->EE->session->cache('SC_lockdown', 'active_id');
+
+			// and bye
+			$this->EE->safecracker_lockdown_lib->delete_lockdown_session($lockdown_id);
 		}
 
 	}
