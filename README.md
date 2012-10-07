@@ -25,7 +25,7 @@ Additionally you can set rules to some default fields, like title.
 		{!-- Rules on default fields --}
 		{rules:title="min_length[4]"}
 
-	{safecracker_lockdown}
+	{/safecracker_lockdown}
 
 
 
